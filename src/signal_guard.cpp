@@ -553,12 +553,12 @@ namespace signal_guard
       new(p) signal_handler_info;
     }
 
-    SIGNALGUARD_MEMFUNC_DECL signalc erased_signal_handler_info::signal() const
+    SIGNALGUARD_MEMFUNC_DECL signalc erased_signal_handler_info::signal() const noexcept
     {
       auto *p = reinterpret_cast<const signal_handler_info *>(_erased);
       return p->signal;
     }
-    SIGNALGUARD_MEMFUNC_DECL void *erased_signal_handler_info::address() const
+    SIGNALGUARD_MEMFUNC_DECL void *erased_signal_handler_info::address() const noexcept
     {
       auto *p = reinterpret_cast<const signal_handler_info *>(_erased);
 #ifdef _WIN32
@@ -568,27 +568,34 @@ namespace signal_guard
 #endif
     }
 #ifdef _WIN32
-    SIGNALGUARD_MEMFUNC_DECL long erased_signal_handler_info::error_code() const
+    SIGNALGUARD_MEMFUNC_DECL long erased_signal_handler_info::error_code() const noexcept
     {
       auto *p = reinterpret_cast<const signal_handler_info *>(_erased);
       return p->have_info ? (long) p->info.ExceptionInformation[2] : 0;
     }
 #else
-    SIGNALGUARD_MEMFUNC_DECL int erased_signal_handler_info::error_code() const
+    SIGNALGUARD_MEMFUNC_DECL int erased_signal_handler_info::error_code() const noexcept
     {
       auto *p = reinterpret_cast<const signal_handler_info *>(_erased);
       return p->have_info ? p->info.si_errno : 0;
     }
 #endif
-    SIGNALGUARD_MEMFUNC_DECL void *erased_signal_handler_info::raw_info()
+    SIGNALGUARD_MEMFUNC_DECL const void *erased_signal_handler_info::raw_info() const noexcept
     {
-      auto *p = reinterpret_cast<signal_handler_info *>(_erased);
-      return p->have_info ? static_cast<void *>(&p->info) : nullptr;
+      auto *p = reinterpret_cast<const signal_handler_info *>(_erased);
+      return p->have_info ? static_cast<const void *>(&p->info) : nullptr;
     }
-    SIGNALGUARD_MEMFUNC_DECL void *erased_signal_handler_info::raw_context()
+    SIGNALGUARD_MEMFUNC_DECL const void *erased_signal_handler_info::raw_context() const noexcept
     {
-      auto *p = reinterpret_cast<signal_handler_info *>(_erased);
-      return p->have_context ? static_cast<void *>(&p->context) : nullptr;
+      auto *p = reinterpret_cast<const signal_handler_info *>(_erased);
+      return p->have_context ? static_cast<const void *>(&p->context) : nullptr;
+    }
+    SIGNALGUARD_MEMFUNC_DECL bool erased_signal_handler_info::reraise() const
+    {
+      auto *p = reinterpret_cast<const signal_handler_info *>(_erased);
+      auto *info = p->have_info ? static_cast<const void *>(&p->info) : nullptr;
+      auto *context = p->have_context ? static_cast<const void *>(&p->context) : nullptr;
+      return thread_local_raise_signal(p->signal, const_cast<void *>(info), const_cast<void *>(context));
     }
 
     SIGNALGUARD_MEMFUNC_DECL void erased_signal_handler_info::acquire(signalc guarded)

@@ -58,14 +58,14 @@ namespace signal_guard
   {
     none = 0,
 
-    abort_process = (1 << 0),            //!< The process is aborting
-    undefined_memory_access = (1 << 1),  //!< Attempt to access a memory page which doesn't exist
-    illegal_instruction = (1 << 2),      //!< Execution of illegal instruction
-    interrupt = (1 << 3),                //!< The process is interrupted
-    broken_pipe = (1 << 4),              //!< Reader on a pipe vanished
-    segmentation_fault = (1 << 5),       //!< Attempt to access a memory page whose permissions disallow
+    abort_process = (1 << 0),            //!< The process is aborting (`SIGABRT`)
+    undefined_memory_access = (1 << 1),  //!< Attempt to access a memory location which can't exist (`SIGBUS`)
+    illegal_instruction = (1 << 2),      //!< Execution of illegal instruction (`SIGILL`)
+    interrupt = (1 << 3),                //!< The process is interrupted (`SIGINT`)
+    broken_pipe = (1 << 4),              //!< Reader on a pipe vanished (`SIGPIPE`)
+    segmentation_fault = (1 << 5),       //!< Attempt to access a memory page whose permissions disallow (`SIGSEGV`)
 
-    floating_point_error = (1 << 8),  //!< Floating point error
+    floating_point_error = (1 << 8),  //!< Floating point error (`SIGFPE`)
     // leave bits 9-15 for individual FP errors
 
     // C++ handlers
@@ -168,6 +168,7 @@ namespace signal_guard
   {
   protected:
     raised_signal_info() = default;
+    ~raised_signal_info() = default;
 
   public:
     jmp_buf _buf;
@@ -178,23 +179,25 @@ namespace signal_guard
     raised_signal_info &operator=(raised_signal_info &&) = delete;
 
     //! The signal raised
-    virtual signalc signal() const = 0;
+    signalc signal() const noexcept;
     //! The faulting address for `signalc::undefined_memory_access`, `signalc::segmentation_fault`, `signalc::illegal_instruction` and `signalc::floating_point_error`.
-    virtual void *address() const = 0;
+    void *address() const noexcept;
 //! The system specific error code for this signal, the `si_errno` code (POSIX) or `NTSTATUS` code (Windows)
 #ifdef _WIN32
-    virtual long error_code() const = 0;
+    long error_code() const noexcept;
 #else
-    virtual int error_code() const = 0;
+    int error_code() const noexcept;
 #endif
 
     //! The OS specific `siginfo_t *` (POSIX) or `PEXCEPTION_RECORD` (Windows)
-    virtual void *raw_info() = 0;
+    const void *raw_info() const noexcept;
     //! The OS specific `ucontext_t` (POSIX) or `PCONTEXT` (Windows)
-    virtual void *raw_context() = 0;
+    const void *raw_context() const noexcept;
+    //! Re-raise this signal on the calling thread, returning false if there is no handler available.
+    bool reraise() const;
 
-    virtual bool _set_siginfo(intptr_t, void *, void *) = 0;
-    virtual bool _call_continuer() const = 0;
+    bool _set_siginfo(intptr_t, void *, void *);
+    bool _call_continuer() const;
   };
 
   namespace detail
@@ -203,30 +206,9 @@ namespace signal_guard
 #ifdef _WIN32
     SIGNALGUARD_FUNC_DECL unsigned long win32_exception_filter_function(unsigned long code, _EXCEPTION_POINTERS *pts) noexcept;
 #endif
-    struct SIGNALGUARD_CLASS_DECL erased_signal_handler_info : public raised_signal_info
-    {
-      SIGNALGUARD_MEMFUNC_DECL erased_signal_handler_info();
-
-      SIGNALGUARD_MEMFUNC_DECL signalc signal() const override final;
-      SIGNALGUARD_MEMFUNC_DECL void *address() const override final;
-#ifdef _WIN32
-      SIGNALGUARD_MEMFUNC_DECL long error_code() const override final;
-#else
-      SIGNALGUARD_MEMFUNC_DECL int error_code() const override final;
-#endif
-      SIGNALGUARD_MEMFUNC_DECL void *raw_info() override final;
-      SIGNALGUARD_MEMFUNC_DECL void *raw_context() override final;
-
-      SIGNALGUARD_MEMFUNC_DECL void acquire(signalc guarded);
-      SIGNALGUARD_MEMFUNC_DECL void release(signalc guarded);
-
-    private:
-      SIGNALGUARD_MEMFUNC_DECL virtual bool _set_siginfo(intptr_t, void *, void *) override final;
-      char _erased[1424];
-    };
     template <class R> inline R throw_signal_raised(const raised_signal_info &i) { throw signal_raised(i.signal()); }
     inline bool continue_or_handle(const raised_signal_info & /*unused*/) noexcept { return false; }
-  }
+  }  // namespace detail
 
 #if defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 6
 #pragma GCC diagnostic push
@@ -348,7 +330,7 @@ namespace signal_guard
   QUICKCPPLIB_TEMPLATE(class F, class H, class R = decltype(std::declval<F>()()))
   QUICKCPPLIB_TREQUIRES(QUICKCPPLIB_TPRED(std::is_constructible<R, decltype(std::declval<H>()(std::declval<const raised_signal_info>()))>::value))
   inline auto signal_guard(signalc guarded, F &&f, H &&h) { return signal_guard(guarded, static_cast<F &&>(f), static_cast<H &&>(h), detail::continue_or_handle); }
-}
+}  // namespace signal_guard
 
 QUICKCPPLIB_NAMESPACE_END
 
